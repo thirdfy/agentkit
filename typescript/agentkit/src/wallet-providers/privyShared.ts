@@ -20,9 +20,11 @@ export interface PrivyWalletConfig {
 
 export type PrivyWalletExport = {
   walletId: string;
+  embeddedWalletId?: string;
   authorizationPrivateKey: string | undefined;
   chainId: string | undefined;
   networkId: string | undefined;
+  authorizationKeyId?: string;
 };
 
 type CreatePrivyWalletReturnType = {

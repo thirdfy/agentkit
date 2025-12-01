@@ -1,4 +1,4 @@
-import { WalletWithMetadata } from "@privy-io/server-auth";
+import { PrivyClient, WalletWithMetadata } from "@privy-io/server-auth";
 import canonicalize from "canonicalize";
 import crypto from "crypto";
 import {
@@ -24,6 +24,25 @@ interface PrivyResponse<T> {
   data: T;
 }
 
+const DEFAULT_GASLESS_CHAINS = [8453, 84532];
+
+const parseChainList = (value?: string | number[]): number[] => {
+  if (!value) {
+    return DEFAULT_GASLESS_CHAINS;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((chain) => Number(chain))
+      .filter((chain) => Number.isFinite(chain));
+  }
+
+  return value
+    .split(",")
+    .map((id) => Number(id.trim()))
+    .filter((chain) => Number.isFinite(chain));
+};
+
 /**
  * Configuration options for the Privy Embedded Wallet provider.
  */
@@ -42,6 +61,27 @@ export interface PrivyEvmDelegatedEmbeddedWalletConfig extends PrivyWalletConfig
 
   /** Optional RPC URL for Viem public client */
   rpcUrl?: string;
+
+  /** Optional configuration for built-in gasless sponsorship */
+  gasless?: PrivyGaslessConfig;
+}
+
+type GaslessContextType =
+  | "swap"
+  | "transfer"
+  | "conversion"
+  | "faucet"
+  | "approval"
+  | "contract_call"
+  | "other";
+
+interface PrivyGaslessConfig {
+  enabled?: boolean;
+  supportedChains?: number[];
+  authorizationPrivateKey?: string;
+  authorizationKeyId?: string;
+  privyApiUrl?: string;
+  defaultContext?: GaslessContextType;
 }
 
 /**
@@ -51,26 +91,54 @@ export interface PrivyEvmDelegatedEmbeddedWalletConfig extends PrivyWalletConfig
  */
 export class PrivyEvmDelegatedEmbeddedWalletProvider extends WalletProvider {
   #walletId: string;
+  #embeddedWalletId?: string;
   #address: string;
   #appId: string;
   #appSecret: string;
   #authKey: string;
+  #authKeyId?: string;
   #network: Network;
   #publicClient: PublicClient;
+  #gaslessEnabled: boolean;
+  #gaslessChains: Set<number>;
+  #gaslessAuthKey?: string;
+  #gaslessAuthKeyId?: string;
+  #gaslessDefaultContext: GaslessContextType;
+  #privyApiUrl: string;
+  #walletApiClients: Map<string, PrivyClient>;
 
   /**
    * Private constructor to enforce use of factory method.
    *
    * @param config - The configuration options for the wallet provider
    */
-  private constructor(config: PrivyEvmDelegatedEmbeddedWalletConfig & { address: string }) {
+  private constructor(
+    config: PrivyEvmDelegatedEmbeddedWalletConfig & { address: string; walletInstanceId?: string },
+  ) {
     super();
 
     this.#walletId = config.walletId;
+    this.#embeddedWalletId = config.walletInstanceId;
     this.#address = config.address;
     this.#appId = config.appId;
     this.#appSecret = config.appSecret;
     this.#authKey = config.authorizationPrivateKey || "";
+     this.#authKeyId = config.authorizationKeyId;
+
+    const envGaslessEnabled = process.env.AGENTKIT_GASLESS_ENABLED === "true";
+    const envChainList = process.env.AGENTKIT_GASLESS_CHAINS;
+    const resolvedGaslessChains =
+      config.gasless?.supportedChains ??
+      (envChainList ? parseChainList(envChainList) : DEFAULT_GASLESS_CHAINS);
+
+    this.#gaslessEnabled = config.gasless?.enabled ?? envGaslessEnabled;
+    this.#gaslessChains = new Set(resolvedGaslessChains);
+    this.#gaslessAuthKey = config.gasless?.authorizationPrivateKey ?? config.authorizationPrivateKey;
+    this.#gaslessAuthKeyId = config.gasless?.authorizationKeyId ?? config.authorizationKeyId;
+    this.#gaslessDefaultContext = config.gasless?.defaultContext ?? "contract_call";
+    this.#privyApiUrl =
+      config.gasless?.privyApiUrl ?? process.env.PRIVY_WALLET_API_URL ?? "https://api.privy.io";
+    this.#walletApiClients = new Map();
 
     const networkId = config.networkId || "base-sepolia";
     const chainId = config.chainId || NETWORK_ID_TO_CHAIN_ID[networkId];
@@ -143,7 +211,9 @@ export class PrivyEvmDelegatedEmbeddedWalletProvider extends WalletProvider {
         throw new Error(`Could not find wallet address for wallet ID ${config.walletId}`);
       }
 
-      const walletAddress = embeddedWallets[0].address;
+      const walletRecord = embeddedWallets[0];
+      const walletAddress = walletRecord.address;
+      const walletInstanceId = (walletRecord as WalletWithMetadata & { id?: string }).id;
 
       // Verify the network/chain ID if provided
       if (config.chainId) {
@@ -156,6 +226,7 @@ export class PrivyEvmDelegatedEmbeddedWalletProvider extends WalletProvider {
       return new PrivyEvmDelegatedEmbeddedWalletProvider({
         ...config,
         address: walletAddress as string,
+        walletInstanceId,
       });
     } catch (error) {
       if (error instanceof Error) {
@@ -352,6 +423,22 @@ export class PrivyEvmDelegatedEmbeddedWalletProvider extends WalletProvider {
    * @returns The hash of the transaction.
    */
   async sendTransaction(transaction: TransactionRequest): Promise<Hex> {
+    if (this.shouldUseGasless()) {
+      try {
+        return await this.sendWithGasSponsorship(transaction);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "unknown error";
+        console.warn(
+          "[PrivyEvmDelegatedEmbeddedWalletProvider] Gasless transaction failed, falling back to standard transaction:",
+          message,
+        );
+      }
+    }
+
+    return this.sendViaPrivyRpc(transaction);
+  }
+
+  private async sendViaPrivyRpc(transaction: TransactionRequest): Promise<Hex> {
     const body = {
       address: this.#address,
       chain_type: "ethereum",
@@ -374,6 +461,151 @@ export class PrivyEvmDelegatedEmbeddedWalletProvider extends WalletProvider {
       }
       throw new Error("Transaction sending failed");
     }
+  }
+
+  private shouldUseGasless(): boolean {
+    if (!this.#gaslessEnabled || !this.#network.chainId) {
+      return false;
+    }
+
+    return this.#gaslessChains.has(Number(this.#network.chainId));
+  }
+
+  private getWalletSelector():
+    | { walletId: string }
+    | { address: `0x${string}`; chainType: "ethereum" } {
+    if (this.#embeddedWalletId) {
+      return { walletId: this.#embeddedWalletId };
+    }
+
+    if (this.#walletId && !this.#walletId.startsWith("did:")) {
+      return { walletId: this.#walletId };
+    }
+
+    return { address: this.#address as `0x${string}`, chainType: "ethereum" as const };
+  }
+
+  private async sendWithGasSponsorship(transaction: TransactionRequest): Promise<Hex> {
+    const client = this.createWalletApiClient(this.#gaslessAuthKey, this.#gaslessAuthKeyId);
+    const selector = this.getWalletSelector();
+    const chainId = Number(this.#network.chainId!);
+    const payload = this.mapTransactionForPrivy(transaction);
+    const authorizationContext = this.buildAuthorizationContext(this.#gaslessAuthKey);
+
+    const execute = async (sponsor: boolean) => {
+      const request = {
+        ...selector,
+        caip2: `eip155:${chainId}` as `eip155:${string}`,
+        sponsor,
+        transaction: payload,
+        ...(authorizationContext ? { authorization_context: authorizationContext } : {}),
+      } as any;
+
+      const response = await client.walletApi.ethereum.sendTransaction(request);
+
+      return response.hash as Hex;
+    };
+
+    try {
+      return await execute(true);
+    } catch (error) {
+      if (this.isRecoverableSponsorshipError(error)) {
+        return execute(false);
+      }
+      throw error;
+    }
+  }
+
+  private mapTransactionForPrivy(transaction: TransactionRequest) {
+    return {
+      to: transaction.to as `0x${string}`,
+      data: (transaction.data ?? "0x") as `0x${string}`,
+      value: this.normalizeHex(transaction.value),
+      gasLimit: this.normalizeHex((transaction as any).gas ?? (transaction as any).gasLimit),
+    };
+  }
+
+  private normalizeHex(value?: bigint | number | string | Hex | null): `0x${string}` | undefined {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+
+    if (typeof value === "bigint") {
+      return `0x${value.toString(16)}` as `0x${string}`;
+    }
+
+    if (typeof value === "number") {
+      return `0x${BigInt(value).toString(16)}` as `0x${string}`;
+    }
+
+    if (typeof value === "string") {
+      if (value.startsWith("0x")) {
+        return value as `0x${string}`;
+      }
+      return `0x${BigInt(value).toString(16)}` as `0x${string}`;
+    }
+
+    return value as `0x${string}`;
+  }
+
+  private createWalletApiClient(authKey?: string, authKeyId?: string): PrivyClient {
+    const resolvedKey = authKey ?? this.#gaslessAuthKey ?? this.#authKey;
+    if (!resolvedKey) {
+      throw new Error("Gasless sponsorship requires a Privy authorization private key");
+    }
+
+    const resolvedKeyId = authKeyId ?? this.#gaslessAuthKeyId ?? this.#authKeyId;
+
+    const cacheKey = `${resolvedKey}:${resolvedKeyId ?? "default"}`;
+    if (this.#walletApiClients.has(cacheKey)) {
+      return this.#walletApiClients.get(cacheKey)!;
+    }
+
+    const client = new PrivyClient(this.#appId, this.#appSecret, {
+      walletApi: {
+        authorizationPrivateKey: resolvedKey,
+        apiURL: this.#privyApiUrl,
+      },
+    });
+
+    if (resolvedKeyId) {
+      const httpInstance = (client.walletApi as any)?.api;
+      if (httpInstance?.instance?.defaults?.headers) {
+        httpInstance.instance.defaults.headers["privy-authorization-key-id"] = resolvedKeyId;
+      }
+    }
+
+    this.#walletApiClients.set(cacheKey, client);
+    return client;
+  }
+
+  private buildAuthorizationContext(authKey?: string) {
+    const normalizedKey = this.normalizePrivyAuthorizationKey(authKey ?? this.#gaslessAuthKey);
+    if (!normalizedKey) {
+      return undefined;
+    }
+
+    return {
+      authorization_private_keys: [normalizedKey],
+    };
+  }
+
+  private isRecoverableSponsorshipError(error: unknown): boolean {
+    if (typeof error !== "object" || error === null) {
+      return false;
+    }
+
+    const status = (error as any).status ?? (error as any).statusCode;
+    if (status === 401 || status === 403) {
+      return true;
+    }
+
+    const message = (error as any).message;
+    if (typeof message === "string") {
+      return message.includes("No valid authorization signatures");
+    }
+
+    return false;
   }
 
   /**
@@ -417,25 +649,14 @@ export class PrivyEvmDelegatedEmbeddedWalletProvider extends WalletProvider {
    */
   async nativeTransfer(to: string, value: string): Promise<Hex> {
     const valueInWei = BigInt(value);
-    const valueHex = `0x${valueInWei.toString(16)}`;
-
-    const body = {
-      address: this.#address,
-      chain_type: "ethereum",
-      method: "eth_sendTransaction",
-      caip2: `eip155:${this.#network.chainId!}`,
-      params: {
-        transaction: {
-          to,
-          value: valueHex,
-        },
-      },
-    };
 
     try {
-      const response = await this.executePrivyRequest<PrivyResponse<{ hash: Hex }>>(body);
+      const txHash = await this.sendTransaction({
+        to: to as `0x${string}`,
+        value: valueInWei,
+      });
 
-      const receipt = await this.waitForTransactionReceipt(response.data.hash);
+      const receipt = await this.waitForTransactionReceipt(txHash);
 
       if (!receipt) {
         throw new Error("Transaction failed");
@@ -458,9 +679,11 @@ export class PrivyEvmDelegatedEmbeddedWalletProvider extends WalletProvider {
   exportWallet(): PrivyWalletExport {
     return {
       walletId: this.#walletId,
+      embeddedWalletId: this.#embeddedWalletId,
       authorizationPrivateKey: this.#authKey,
       networkId: this.#network.networkId!,
       chainId: this.#network.chainId,
+      authorizationKeyId: this.#authKeyId,
     };
   }
 
@@ -471,6 +694,14 @@ export class PrivyEvmDelegatedEmbeddedWalletProvider extends WalletProvider {
    * @param body - The request body
    * @returns The generated signature
    */
+  private normalizePrivyAuthorizationKey(key?: string | null): string | undefined {
+    if (!key) {
+      return undefined;
+    }
+
+    return key.startsWith("wallet-auth:") ? key.replace("wallet-auth:", "") : key;
+  }
+
   private generatePrivySignature(url: string, body: object): string {
     try {
       const payload = {
@@ -488,7 +719,11 @@ export class PrivyEvmDelegatedEmbeddedWalletProvider extends WalletProvider {
 
       const serializedPayloadBuffer = Buffer.from(serializedPayload);
 
-      const privateKeyAsString = this.#authKey.replace("wallet-auth:", "");
+      const normalizedKey = this.normalizePrivyAuthorizationKey(this.#authKey);
+      if (!normalizedKey) {
+        throw new Error("Missing Privy authorization key");
+      }
+      const privateKeyAsString = normalizedKey;
       const privateKeyAsPem = `-----BEGIN PRIVATE KEY-----\n${privateKeyAsString}\n-----END PRIVATE KEY-----`;
 
       const privateKey = crypto.createPrivateKey({
