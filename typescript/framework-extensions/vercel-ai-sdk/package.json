@@ -1,8 +1,8 @@
 {
-  "name": "@coinbase/agentkit-vercel-ai-sdk",
+  "name": "@thirdfy/agentkit-vercel-ai-sdk",
   "version": "0.1.0",
-  "description": "Vercel AI SDK extension of CDP Agentkit",
-  "repository": "https://github.com/coinbase/agentkit",
+  "description": "Vercel AI SDK extension of Agentkit (forked from Coinbase)",
+  "repository": "https://github.com/thirdfy/agentkit",
   "author": "Coinbase Inc.",
   "license": "Apache-2.0",
   "main": "dist/index.js",
@@ -42,7 +42,10 @@
     "zod": "^3.22.4"
   },
   "peerDependencies": {
-    "@coinbase/agentkit": ">=0.1.0",
+    "@thirdfy/agentkit": ">=0.1.0",
     "ai": "^4.1.16"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   }
 }

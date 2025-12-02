@@ -1,8 +1,8 @@
 {
-  "name": "@coinbase/agentkit-langchain",
+  "name": "@thirdfy/agentkit-langchain",
   "version": "0.3.0",
-  "description": "Langchain Toolkit extension of CDP Agentkit",
-  "repository": "https://github.com/coinbase/agentkit",
+  "description": "Langchain Toolkit extension of Agentkit (forked from Coinbase)",
+  "repository": "https://github.com/thirdfy/agentkit",
   "author": "Coinbase Inc.",
   "license": "Apache-2.0",
   "main": "dist/index.js",
@@ -43,6 +43,9 @@
     "zod": "^3.22.4"
   },
   "peerDependencies": {
-    "@coinbase/agentkit": ">=0.1.0"
+    "@thirdfy/agentkit": ">=0.1.0"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   }
 }
