@@ -46,6 +46,6 @@
     "ai": "^4.1.16"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   }
 }
