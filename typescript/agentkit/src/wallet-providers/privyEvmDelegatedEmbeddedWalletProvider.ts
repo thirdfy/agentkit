@@ -749,12 +749,19 @@ export class PrivyEvmDelegatedEmbeddedWalletProvider extends WalletProvider {
    * @returns The headers for the request
    */
   private getPrivyHeaders(url: string, body: object) {
-    return {
+    const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Basic ${Buffer.from(`${this.#appId}:${this.#appSecret}`).toString("base64")}`,
       "privy-app-id": this.#appId,
       "privy-authorization-signature": this.generatePrivySignature(url, body),
     };
+    
+    // Include authorization key ID if available (required by Privy API)
+    if (this.#authKeyId) {
+      headers["privy-authorization-key-id"] = this.#authKeyId;
+    }
+    
+    return headers;
   }
 
   /**
