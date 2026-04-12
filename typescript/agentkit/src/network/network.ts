@@ -92,6 +92,14 @@ export const NETWORK_ID_TO_VIEM_CHAIN: Record<string, Chain> = {
  * @returns The chain
  */
 export const getChain = (id: string): Chain => {
-  const chainList = Object.values(chains);
-  return chainList.find(chain => chain.id === parseInt(id)) as Chain;
+  const chainId = parseInt(id, 10);
+
+  // Fast path: built-in Viem chain registry.
+  const viemChain = Object.values(chains).find((chain) => chain.id === chainId);
+  if (viemChain) return viemChain as Chain;
+
+  // Fallback path: custom chains defined in this module (e.g. DogeOS).
+  const networkId = CHAIN_ID_TO_NETWORK_ID[chainId];
+  if (!networkId) return undefined as unknown as Chain;
+  return NETWORK_ID_TO_VIEM_CHAIN[networkId] as Chain;
 };
