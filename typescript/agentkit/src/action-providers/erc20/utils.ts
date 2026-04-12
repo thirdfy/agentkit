@@ -25,32 +25,68 @@ export async function getTokenDetails(
   address?: string,
 ): Promise<TokenDetails | null> {
   try {
-    const results = await walletProvider.getPublicClient().multicall({
-      contracts: [
-        {
+    let name: string | undefined;
+    let decimals: number | undefined;
+    let balance: bigint | undefined;
+
+    try {
+      const results = await walletProvider.getPublicClient().multicall({
+        contracts: [
+          {
+            address: contractAddress as Hex,
+            abi: erc20Abi,
+            functionName: "name",
+            args: [],
+          },
+          {
+            address: contractAddress as Hex,
+            abi: erc20Abi,
+            functionName: "decimals",
+            args: [],
+          },
+          {
+            address: contractAddress as Hex,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [(address || walletProvider.getAddress()) as Hex],
+          },
+        ],
+      });
+      name = results[0].result as string | undefined;
+      decimals = results[1]?.result as number | undefined;
+      balance = results[2]?.result as bigint | undefined;
+      if (name === undefined || decimals === undefined || balance === undefined) {
+        throw new Error("MULTICALL_INCOMPLETE");
+      }
+    } catch {
+      // Some EVM networks (e.g. DogeOS testnet) do not expose a viem-compatible multicall3.
+      // Fall back to direct contract reads to keep ERC20 tools functional.
+      const client = walletProvider.getPublicClient();
+      const result = (await Promise.all([
+        client.readContract({
           address: contractAddress as Hex,
           abi: erc20Abi,
           functionName: "name",
           args: [],
-        },
-        {
+        }),
+        client.readContract({
           address: contractAddress as Hex,
           abi: erc20Abi,
           functionName: "decimals",
           args: [],
-        },
-        {
+        }),
+        client.readContract({
           address: contractAddress as Hex,
           abi: erc20Abi,
           functionName: "balanceOf",
           args: [(address || walletProvider.getAddress()) as Hex],
-        },
-      ],
-    });
+        }),
+      ])) as [string, number, bigint];
 
-    const name = results[0].result;
-    const decimals = results[1]?.result;
-    const balance = results[2]?.result;
+      name = result[0];
+      decimals = result[1];
+      balance = result[2];
+    }
 
     if (balance === undefined || decimals === undefined || name === undefined) {
       return null;

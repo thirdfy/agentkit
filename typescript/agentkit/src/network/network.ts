@@ -11,6 +11,7 @@ import {
   polygonMumbai,
   polygon,
 } from "viem/chains";
+import { defineChain } from "viem";
 import * as chains from "viem/chains";
 
 /**
@@ -27,7 +28,32 @@ export const CHAIN_ID_TO_NETWORK_ID: Record<number, string> = {
   421614: "arbitrum-sepolia",
   10: "optimism-mainnet",
   11155420: "optimism-sepolia",
+  6281971: "dogeos-testnet",
 };
+
+const dogeosTestnet = defineChain({
+  id: 6281971,
+  name: "DogeOS Chikyu Testnet",
+  nativeCurrency: {
+    name: "Doge",
+    symbol: "DOGE",
+    decimals: 18,
+  },
+  rpcUrls: {
+    default: {
+      http: ["https://rpc.testnet.dogeos.com"],
+    },
+    public: {
+      http: ["https://rpc.testnet.dogeos.com"],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: "DogeOS Explorer",
+      url: "https://blockscout.testnet.dogeos.com",
+    },
+  },
+});
 
 /**
  * Maps Coinbase network IDs to EVM chain IDs
@@ -56,6 +82,7 @@ export const NETWORK_ID_TO_VIEM_CHAIN: Record<string, Chain> = {
   "arbitrum-sepolia": arbitrumSepolia,
   "optimism-mainnet": optimism,
   "optimism-sepolia": optimismSepolia,
+  "dogeos-testnet": dogeosTestnet,
 };
 
 /**
