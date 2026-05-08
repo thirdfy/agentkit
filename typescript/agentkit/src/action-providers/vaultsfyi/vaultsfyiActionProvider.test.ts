@@ -1,14 +1,20 @@
+import { jest } from "@jest/globals";
 import { VaultsfyiActionProvider } from "./vaultsfyiActionProvider";
 import { Network } from "../../network";
 import { EvmWalletProvider } from "../../wallet-providers";
 import { VAULTSFYI_SUPPORTED_CHAINS } from "./constants";
+
+jest.mock("@coinbase/cdp-sdk", () => ({
+  CdpClient: jest.fn(),
+  EvmServerAccount: jest.fn(),
+}));
 
 const mockFetchResult = (status: number, data: object) => {
   return {
     json: async () => data,
     status,
     ok: status >= 200 && status < 300,
-  };
+  } as Response;
 };
 
 const mockVault = (num: number) => ({
@@ -90,11 +96,12 @@ const MOCK_TX_HASH = "0xmock-hash";
 describe("VaultsfyiActionProvider", () => {
   const provider = new VaultsfyiActionProvider({ apiKey: "test-api-key" });
   let mockWalletProvider: jest.Mocked<EvmWalletProvider>;
-  let mockedFetch: jest.Mock;
+  let mockedFetch: jest.MockedFunction<typeof fetch>;
   const originalFetch = global.fetch;
 
   beforeAll(() => {
-    global.fetch = mockedFetch = jest.fn();
+    mockedFetch = jest.fn() as jest.MockedFunction<typeof fetch>;
+    global.fetch = mockedFetch;
   });
 
   afterAll(() => {
@@ -610,9 +617,10 @@ describe("VaultsfyiActionProvider", () => {
 
       // Set up the mock to return appropriate data for each call
       mockedFetch.mockImplementation(url => {
-        if (url.includes("/historical-apy/")) {
+        const requestUrl = String(url);
+        if (requestUrl.includes("/historical-apy/")) {
           return Promise.resolve(mockFetchResult(200, mockApyData));
-        } else if (url.includes("/historical-tvl/")) {
+        } else if (requestUrl.includes("/historical-tvl/")) {
           return Promise.resolve(mockFetchResult(200, mockTvlData));
         }
         return Promise.resolve(mockFetchResult(500, { error: "Unexpected URL" }));
@@ -648,14 +656,15 @@ describe("VaultsfyiActionProvider", () => {
     it("should return an error if the APY API request fails", async () => {
       // Set up the mock to fail for APY but succeed for TVL
       mockedFetch.mockImplementation(url => {
-        if (url.includes("/historical-apy/")) {
+        const requestUrl = String(url);
+        if (requestUrl.includes("/historical-apy/")) {
           return Promise.resolve(
             mockFetchResult(500, {
               error: "Internal Server Error",
               message: "Failed to get historical APY data",
             }),
           );
-        } else if (url.includes("/historical-tvl/")) {
+        } else if (requestUrl.includes("/historical-tvl/")) {
           return Promise.resolve(
             mockFetchResult(200, {
               timestamp: 1704067200,
@@ -681,7 +690,8 @@ describe("VaultsfyiActionProvider", () => {
     it("should return an error if the TVL API request fails", async () => {
       // Set up the mock to succeed for APY but fail for TVL
       mockedFetch.mockImplementation(url => {
-        if (url.includes("/historical-apy/")) {
+        const requestUrl = String(url);
+        if (requestUrl.includes("/historical-apy/")) {
           return Promise.resolve(
             mockFetchResult(200, {
               timestamp: 1704067200,
@@ -689,7 +699,7 @@ describe("VaultsfyiActionProvider", () => {
               apy: { base: 500, rewards: 300, total: 800 },
             }),
           );
-        } else if (url.includes("/historical-tvl/")) {
+        } else if (requestUrl.includes("/historical-tvl/")) {
           return Promise.resolve(
             mockFetchResult(500, {
               error: "Internal Server Error",
