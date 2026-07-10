@@ -29,6 +29,7 @@ export const CHAIN_ID_TO_NETWORK_ID: Record<number, string> = {
   10: "optimism-mainnet",
   11155420: "optimism-sepolia",
   6281971: "dogeos-testnet",
+  4663: "robinhood-mainnet",
 };
 
 const dogeosTestnet = defineChain({
@@ -51,6 +52,30 @@ const dogeosTestnet = defineChain({
     default: {
       name: "DogeOS Explorer",
       url: "https://blockscout.testnet.dogeos.com",
+    },
+  },
+});
+
+const robinhoodMainnet = defineChain({
+  id: 4663,
+  name: "Robinhood Chain",
+  nativeCurrency: {
+    name: "Ether",
+    symbol: "ETH",
+    decimals: 18,
+  },
+  rpcUrls: {
+    default: {
+      http: ["https://rpc.mainnet.chain.robinhood.com"],
+    },
+    public: {
+      http: ["https://rpc.mainnet.chain.robinhood.com"],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: "Robinhood Chain Explorer",
+      url: "https://robinhoodchain.blockscout.com",
     },
   },
 });
@@ -83,6 +108,7 @@ export const NETWORK_ID_TO_VIEM_CHAIN: Record<string, Chain> = {
   "optimism-mainnet": optimism,
   "optimism-sepolia": optimismSepolia,
   "dogeos-testnet": dogeosTestnet,
+  "robinhood-mainnet": robinhoodMainnet,
 };
 
 /**

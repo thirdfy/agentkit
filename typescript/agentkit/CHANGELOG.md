@@ -1,5 +1,11 @@
 # AgentKit Changelog
 
+## 0.10.12
+
+### Patch Changes
+
+- Added Robinhood Chain mainnet (`4663`, network id `robinhood-mainnet`) to `CHAIN_ID_TO_NETWORK_ID`, `NETWORK_ID_TO_VIEM_CHAIN`, and `getChain` fallback resolution.
+
 ## 0.10.3
 
 ### Patch Changes
