@@ -1,5 +1,11 @@
 # AgentKit Changelog
 
+## 0.10.13
+
+### Patch Changes
+
+- Made `sendAnalyticsEvent` best-effort: never throw on Coinbase cca-lite HTTP errors or network failures. Wallet and action call sites also `.catch()` so unhandled rejections cannot crash host API isolates.
+
 ## 0.10.12
 
 ### Patch Changes
