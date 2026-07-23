@@ -234,7 +234,9 @@ describe("PrivyEvmDelegatedEmbeddedWalletProvider", () => {
     });
 
     it("should throw when walletInstanceId does not match any embedded wallet", async () => {
-      mockPrivyUserWithEmbeds([MOCK_EMBED_A, MOCK_EMBED_B]);
+      mockPrivyUserWithEmbeds([MOCK_EMBED_A, MOCK_EMBED_B], {
+        getWallet: jest.fn().mockResolvedValue(null),
+      });
 
       await expect(
         PrivyEvmDelegatedEmbeddedWalletProvider.configureWithWallet({
@@ -242,6 +244,57 @@ describe("PrivyEvmDelegatedEmbeddedWalletProvider", () => {
           walletInstanceId: "missing-resource-id",
         }),
       ).rejects.toThrow("Could not find embedded wallet with resource id missing-resource-id");
+    });
+
+    it("should resolve walletInstanceId via walletApi when linkedAccounts omit id", async () => {
+      const embedsWithoutIds = [
+        { ...MOCK_EMBED_A, id: undefined },
+        { ...MOCK_EMBED_B, id: undefined },
+      ];
+      const getWallet = jest.fn().mockResolvedValue({
+        id: MOCK_EMBED_B.id,
+        address: MOCK_EMBED_B.address,
+      });
+      mockPrivyUserWithEmbeds(embedsWithoutIds as unknown as typeof MOCK_EMBED_A[], { getWallet });
+
+      const provider = await PrivyEvmDelegatedEmbeddedWalletProvider.configureWithWallet({
+        ...MOCK_CONFIG,
+        walletInstanceId: MOCK_EMBED_B.id,
+      });
+
+      expect(getWallet).toHaveBeenCalledWith({ id: MOCK_EMBED_B.id });
+      expect(provider.getAddress()).toBe(MOCK_EMBED_B.address);
+    });
+
+    it("should fall back to preferredAddress when walletApi cannot resolve instance id", async () => {
+      const embedsWithoutIds = [
+        { ...MOCK_EMBED_A, id: undefined },
+        { ...MOCK_EMBED_B, id: undefined },
+      ];
+      mockPrivyUserWithEmbeds(embedsWithoutIds as unknown as typeof MOCK_EMBED_A[], {
+        getWallet: jest.fn().mockRejectedValue(new Error("not found")),
+      });
+
+      const provider = await PrivyEvmDelegatedEmbeddedWalletProvider.configureWithWallet({
+        ...MOCK_CONFIG,
+        walletInstanceId: MOCK_EMBED_B.id,
+        preferredAddress: MOCK_EMBED_B.address,
+      });
+
+      expect(provider.getAddress()).toBe(MOCK_EMBED_B.address);
+    });
+
+    it("should throw when preferredAddress does not match any embedded wallet", async () => {
+      mockPrivyUserWithEmbeds([MOCK_EMBED_A, MOCK_EMBED_B]);
+
+      await expect(
+        PrivyEvmDelegatedEmbeddedWalletProvider.configureWithWallet({
+          ...MOCK_CONFIG,
+          preferredAddress: "0x0000000000000000000000000000000000000001",
+        }),
+      ).rejects.toThrow(
+        "Could not find embedded wallet with address 0x0000000000000000000000000000000000000001",
+      );
     });
 
     it("should resolve non-DID walletId via walletApi.getWallet", async () => {

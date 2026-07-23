@@ -111,11 +111,33 @@ function listEmbeddedWallets(
   );
 }
 
+function selectEmbeddedWalletByAddress(
+  embeddedWallets: Array<WalletWithMetadata & { id?: string }>,
+  preferredAddress?: string,
+): (WalletWithMetadata & { id?: string }) | undefined {
+  const normalized = normalizeEmbeddedAddress(preferredAddress);
+  if (!normalized) {
+    return undefined;
+  }
+  return embeddedWallets.find(
+    (account) => normalizeEmbeddedAddress(account.address as string) === normalized,
+  );
+}
+
+/**
+ * Select an embedded wallet for a Privy user.
+ *
+ * Note: `getUser` via a walletApi-authorized Privy client often omits linked
+ * account `id` fields. When `walletInstanceId` is set, callers should resolve
+ * via walletApi.getWallet and pass the resolved address into this helper when
+ * linkedAccounts lack ids.
+ */
 function selectEmbeddedWallet(
   embeddedWallets: Array<WalletWithMetadata & { id?: string }>,
   options: {
     walletInstanceId?: string;
     preferredAddress?: string;
+    resolvedByWalletApi?: WalletWithMetadata & { id?: string };
   },
 ): WalletWithMetadata & { id?: string } {
   const requestedInstanceId = String(options.walletInstanceId || "").trim();
@@ -123,23 +145,57 @@ function selectEmbeddedWallet(
     const byId = embeddedWallets.find(
       (account) => String(account.id || "").trim() === requestedInstanceId,
     );
-    if (!byId) {
-      throw new Error(`Could not find embedded wallet with resource id ${requestedInstanceId}`);
+    if (byId) {
+      return byId;
     }
-    return byId;
+
+    // walletApi-authorized getUser responses frequently omit account.id.
+    // Fall back to a walletApi.getWallet resolution that was verified against
+    // this user's embeds (or preferredAddress).
+    if (options.resolvedByWalletApi?.address) {
+      const resolvedAddress = normalizeEmbeddedAddress(
+        options.resolvedByWalletApi.address as string,
+      );
+      const inUserEmbeds = embeddedWallets.some(
+        (account) =>
+          normalizeEmbeddedAddress(account.address as string) === resolvedAddress,
+      );
+      const preferred = normalizeEmbeddedAddress(options.preferredAddress);
+      const matchesPreferred = !preferred || preferred === resolvedAddress;
+      if (inUserEmbeds && matchesPreferred) {
+        return {
+          ...options.resolvedByWalletApi,
+          type: "wallet",
+          walletClientType: "privy",
+        } as WalletWithMetadata & { id?: string };
+      }
+    }
+
+    const byPreferred = selectEmbeddedWalletByAddress(
+      embeddedWallets,
+      options.preferredAddress,
+    );
+    if (byPreferred) {
+      return {
+        ...byPreferred,
+        id: byPreferred.id || requestedInstanceId,
+      };
+    }
+
+    throw new Error(`Could not find embedded wallet with resource id ${requestedInstanceId}`);
   }
 
-  const preferredAddress = normalizeEmbeddedAddress(options.preferredAddress);
-  if (preferredAddress) {
-    const byAddress = embeddedWallets.find(
-      (account) => normalizeEmbeddedAddress(account.address as string) === preferredAddress,
-    );
-    if (!byAddress) {
+  const byPreferred = selectEmbeddedWalletByAddress(
+    embeddedWallets,
+    options.preferredAddress,
+  );
+  if (options.preferredAddress) {
+    if (!byPreferred) {
       throw new Error(
         `Could not find embedded wallet with address ${options.preferredAddress}`,
       );
     }
-    return byAddress;
+    return byPreferred;
   }
 
   return embeddedWallets[0];
@@ -272,9 +328,33 @@ export class PrivyEvmDelegatedEmbeddedWalletProvider extends WalletProvider {
           throw new Error(`Could not find wallet address for wallet ID ${config.walletId}`);
         }
 
+        let resolvedByWalletApi: (WalletWithMetadata & { id?: string }) | undefined;
+        const requestedInstanceId = String(config.walletInstanceId || "").trim();
+        if (requestedInstanceId) {
+          const hasLinkedId = embeddedWallets.some(
+            (account) => String(account.id || "").trim() === requestedInstanceId,
+          );
+          if (!hasLinkedId) {
+            try {
+              const wallet = await privyClient.walletApi.getWallet({ id: requestedInstanceId });
+              if (wallet?.address) {
+                resolvedByWalletApi = {
+                  type: "wallet",
+                  walletClientType: "privy",
+                  address: wallet.address,
+                  id: wallet.id,
+                } as WalletWithMetadata & { id?: string };
+              }
+            } catch {
+              // Fall through to preferredAddress / explicit miss handling below.
+            }
+          }
+        }
+
         walletRecord = selectEmbeddedWallet(embeddedWallets, {
           walletInstanceId: config.walletInstanceId,
           preferredAddress: config.preferredAddress,
+          resolvedByWalletApi,
         });
       } else {
         const wallet = await privyClient.walletApi.getWallet({ id: config.walletId });
