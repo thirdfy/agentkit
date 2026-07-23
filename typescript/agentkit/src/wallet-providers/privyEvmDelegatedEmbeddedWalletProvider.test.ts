@@ -51,7 +51,7 @@ jest.mock("../analytics", () => ({
 }));
 
 const MOCK_ADDRESS = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e";
-const MOCK_WALLET_ID = "test-wallet-id";
+const MOCK_WALLET_ID = "did:privy:test-user";
 const MOCK_TRANSACTION_HASH = "0xef01";
 const MOCK_SIGNATURE = "0x1234";
 
@@ -99,18 +99,38 @@ jest.mock("viem", () => {
 });
 
 jest.mock("./privyShared", () => ({
-  createPrivyClient: jest.fn().mockReturnValue({
-    getUser: jest.fn().mockResolvedValue({
-      linkedAccounts: [
-        {
-          type: "wallet",
-          walletClientType: "privy",
-          address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
-        },
-      ],
-    }),
-  }),
+  createPrivyClient: jest.fn(),
 }));
+
+import { createPrivyClient } from "./privyShared";
+
+const MOCK_EMBED_A = {
+  type: "wallet",
+  walletClientType: "privy",
+  address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+  id: "embed-resource-a",
+};
+
+const MOCK_EMBED_B = {
+  type: "wallet",
+  walletClientType: "privy",
+  address: "0x923Ad36667392DC4BFAE328FAB9F9eFca5100b39",
+  id: "embed-resource-b",
+};
+
+function mockPrivyUserWithEmbeds(
+  embeds: Array<typeof MOCK_EMBED_A> = [MOCK_EMBED_A],
+  walletApi?: { getWallet?: jest.Mock },
+) {
+  (createPrivyClient as jest.Mock).mockReturnValue({
+    getUser: jest.fn().mockResolvedValue({
+      linkedAccounts: embeds,
+    }),
+    walletApi: {
+      getWallet: walletApi?.getWallet ?? jest.fn(),
+    },
+  });
+}
 
 jest.mock("canonicalize", () => {
   const mockFn = jest.fn().mockImplementation((obj: unknown) => {
@@ -142,6 +162,7 @@ describe("PrivyEvmDelegatedEmbeddedWalletProvider", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPrivyUserWithEmbeds();
   });
 
   describe("configureWithWallet", () => {
@@ -180,6 +201,63 @@ describe("PrivyEvmDelegatedEmbeddedWalletProvider", () => {
       await expect(
         PrivyEvmDelegatedEmbeddedWalletProvider.configureWithWallet(configWithoutAuthKey),
       ).rejects.toThrow("authorizationPrivateKey is required");
+    });
+
+    it("should select embedded wallet by walletInstanceId when user has multiple embeds", async () => {
+      mockPrivyUserWithEmbeds([MOCK_EMBED_A, MOCK_EMBED_B]);
+
+      const provider = await PrivyEvmDelegatedEmbeddedWalletProvider.configureWithWallet({
+        ...MOCK_CONFIG,
+        walletInstanceId: MOCK_EMBED_B.id,
+      });
+
+      expect(provider.getAddress()).toBe(MOCK_EMBED_B.address);
+    });
+
+    it("should select embedded wallet by preferredAddress when user has multiple embeds", async () => {
+      mockPrivyUserWithEmbeds([MOCK_EMBED_A, MOCK_EMBED_B]);
+
+      const provider = await PrivyEvmDelegatedEmbeddedWalletProvider.configureWithWallet({
+        ...MOCK_CONFIG,
+        preferredAddress: MOCK_EMBED_B.address,
+      });
+
+      expect(provider.getAddress()).toBe(MOCK_EMBED_B.address);
+    });
+
+    it("should default to first embedded wallet when no selector is provided", async () => {
+      mockPrivyUserWithEmbeds([MOCK_EMBED_A, MOCK_EMBED_B]);
+
+      const provider = await PrivyEvmDelegatedEmbeddedWalletProvider.configureWithWallet(MOCK_CONFIG);
+
+      expect(provider.getAddress()).toBe(MOCK_EMBED_A.address);
+    });
+
+    it("should throw when walletInstanceId does not match any embedded wallet", async () => {
+      mockPrivyUserWithEmbeds([MOCK_EMBED_A, MOCK_EMBED_B]);
+
+      await expect(
+        PrivyEvmDelegatedEmbeddedWalletProvider.configureWithWallet({
+          ...MOCK_CONFIG,
+          walletInstanceId: "missing-resource-id",
+        }),
+      ).rejects.toThrow("Could not find embedded wallet with resource id missing-resource-id");
+    });
+
+    it("should resolve non-DID walletId via walletApi.getWallet", async () => {
+      const getWallet = jest.fn().mockResolvedValue({
+        id: MOCK_EMBED_B.id,
+        address: MOCK_EMBED_B.address,
+      });
+      mockPrivyUserWithEmbeds([MOCK_EMBED_A], { getWallet });
+
+      const provider = await PrivyEvmDelegatedEmbeddedWalletProvider.configureWithWallet({
+        ...MOCK_CONFIG,
+        walletId: MOCK_EMBED_B.id,
+      });
+
+      expect(getWallet).toHaveBeenCalledWith({ id: MOCK_EMBED_B.id });
+      expect(provider.getAddress()).toBe(MOCK_EMBED_B.address);
     });
   });
 
@@ -268,7 +346,9 @@ describe("PrivyEvmDelegatedEmbeddedWalletProvider", () => {
       const exportData = provider.exportWallet();
       expect(exportData).toEqual({
         walletId: MOCK_WALLET_ID,
+        embeddedWalletId: MOCK_EMBED_A.id,
         authorizationPrivateKey: MOCK_CONFIG.authorizationPrivateKey,
+        authorizationKeyId: undefined,
         networkId: "base-sepolia",
         chainId: "84532",
       });

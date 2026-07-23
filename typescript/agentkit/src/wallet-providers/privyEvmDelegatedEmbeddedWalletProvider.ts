@@ -47,8 +47,14 @@ const parseChainList = (value?: string | number[]): number[] => {
  * Configuration options for the Privy Embedded Wallet provider.
  */
 export interface PrivyEvmDelegatedEmbeddedWalletConfig extends PrivyWalletConfig {
-  /** The ID of the delegated wallet */
+  /** Privy user DID (`did:privy:…`) or wallet resource id (legacy compat) */
   walletId: string;
+
+  /** Prefer this Privy wallet resource id among the user's embedded wallets */
+  walletInstanceId?: string;
+
+  /** Prefer this embedded wallet address among the user's embedded wallets */
+  preferredAddress?: string;
 
   /** The network ID to connect to (e.g., "base-mainnet") */
   networkId?: string;
@@ -82,6 +88,61 @@ interface PrivyGaslessConfig {
   authorizationKeyId?: string;
   privyApiUrl?: string;
   defaultContext?: GaslessContextType;
+}
+
+function isPrivyUserDid(value: string): boolean {
+  return value.startsWith("did:");
+}
+
+function normalizeEmbeddedAddress(value?: string | null): string | null {
+  const address = String(value || "").trim();
+  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+    return null;
+  }
+  return address.toLowerCase();
+}
+
+function listEmbeddedWallets(
+  linkedAccounts: WalletWithMetadata[],
+): Array<WalletWithMetadata & { id?: string }> {
+  return linkedAccounts.filter(
+    (account): account is WalletWithMetadata & { id?: string } =>
+      account.type === "wallet" && account.walletClientType === "privy",
+  );
+}
+
+function selectEmbeddedWallet(
+  embeddedWallets: Array<WalletWithMetadata & { id?: string }>,
+  options: {
+    walletInstanceId?: string;
+    preferredAddress?: string;
+  },
+): WalletWithMetadata & { id?: string } {
+  const requestedInstanceId = String(options.walletInstanceId || "").trim();
+  if (requestedInstanceId) {
+    const byId = embeddedWallets.find(
+      (account) => String(account.id || "").trim() === requestedInstanceId,
+    );
+    if (!byId) {
+      throw new Error(`Could not find embedded wallet with resource id ${requestedInstanceId}`);
+    }
+    return byId;
+  }
+
+  const preferredAddress = normalizeEmbeddedAddress(options.preferredAddress);
+  if (preferredAddress) {
+    const byAddress = embeddedWallets.find(
+      (account) => normalizeEmbeddedAddress(account.address as string) === preferredAddress,
+    );
+    if (!byAddress) {
+      throw new Error(
+        `Could not find embedded wallet with address ${options.preferredAddress}`,
+      );
+    }
+    return byAddress;
+  }
+
+  return embeddedWallets[0];
 }
 
 /**
@@ -200,20 +261,36 @@ export class PrivyEvmDelegatedEmbeddedWalletProvider extends WalletProvider {
       }
 
       const privyClient = createPrivyClient(config);
-      const user = await privyClient.getUser(config.walletId);
+      let walletRecord: WalletWithMetadata & { id?: string };
+      let configureWalletId = config.walletId;
 
-      const embeddedWallets = user.linkedAccounts.filter(
-        (account): account is WalletWithMetadata =>
-          account.type === "wallet" && account.walletClientType === "privy",
-      );
+      if (isPrivyUserDid(config.walletId)) {
+        const user = await privyClient.getUser(config.walletId);
+        const embeddedWallets = listEmbeddedWallets(user.linkedAccounts as WalletWithMetadata[]);
 
-      if (embeddedWallets.length === 0) {
-        throw new Error(`Could not find wallet address for wallet ID ${config.walletId}`);
+        if (embeddedWallets.length === 0) {
+          throw new Error(`Could not find wallet address for wallet ID ${config.walletId}`);
+        }
+
+        walletRecord = selectEmbeddedWallet(embeddedWallets, {
+          walletInstanceId: config.walletInstanceId,
+          preferredAddress: config.preferredAddress,
+        });
+      } else {
+        const wallet = await privyClient.walletApi.getWallet({ id: config.walletId });
+        if (!wallet?.address) {
+          throw new Error(`Wallet with ID ${config.walletId} not found`);
+        }
+        walletRecord = {
+          type: "wallet",
+          walletClientType: "privy",
+          address: wallet.address,
+          id: wallet.id,
+        } as WalletWithMetadata & { id?: string };
       }
 
-      const walletRecord = embeddedWallets[0];
       const walletAddress = walletRecord.address;
-      const walletInstanceId = (walletRecord as WalletWithMetadata & { id?: string }).id;
+      const walletInstanceId = walletRecord.id;
 
       // Verify the network/chain ID if provided
       if (config.chainId) {
@@ -225,6 +302,7 @@ export class PrivyEvmDelegatedEmbeddedWalletProvider extends WalletProvider {
 
       return new PrivyEvmDelegatedEmbeddedWalletProvider({
         ...config,
+        walletId: configureWalletId,
         address: walletAddress as string,
         walletInstanceId,
       });
