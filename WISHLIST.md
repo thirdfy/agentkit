@@ -5,7 +5,7 @@ Below is a list of actions and frameworks we'd love to see open-source contribut
 ## DeFi Actions
 
 ### Lending & Borrowing
-- [ ] Aave integration
+- [x] Aave integration
 - [ ] Hyperbolic actions
 
 ### Liquidity & Staking
