@@ -1,5 +1,11 @@
 # AgentKit Changelog
 
+## 0.10.17
+
+### Patch Changes
+
+- Removed the discontinued Zora action provider and its `@zoralabs/coins-sdk` and `@zoralabs/protocol-deployments` runtime dependencies.
+
 ## 0.10.13
 
 ### Patch Changes

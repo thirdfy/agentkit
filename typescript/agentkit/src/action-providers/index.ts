@@ -39,4 +39,3 @@ export * from "./yelay";
 export * from "./zerion";
 export * from "./zerodev";
 export * from "./zeroX";
-export * from "./zora";
