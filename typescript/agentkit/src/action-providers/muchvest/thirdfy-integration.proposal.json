@@ -1,0 +1,88 @@
+{
+  "status": "proposal-not-registered",
+  "upstreamBase": "b6e0547abe4e341d88d15aeb0f76cfee085c06b3",
+  "providerId": "muchvest",
+  "supportedChains": [
+    6281971
+  ],
+  "factory": "0x141672B2C2cd5E3a18E2b85558F8af3f85C5ea0c",
+  "custody": "caller-injected EvmWalletProvider; no service key",
+  "actions": [
+    {
+      "proposedPublicAction": "muchvest-list-plans",
+      "agentkitMethod": "MuchvestActionProvider_muchvest_list_plans",
+      "schemaExport": "ListPlansSchema",
+      "behavior": "read",
+      "signs": false,
+      "requiredRuntimePolicy": "Read/prepare only; no spend"
+    },
+    {
+      "proposedPublicAction": "muchvest-get-plan",
+      "agentkitMethod": "MuchvestActionProvider_muchvest_get_plan",
+      "schemaExport": "GetPlanSchema",
+      "behavior": "read",
+      "signs": false,
+      "requiredRuntimePolicy": "Read/prepare only; no spend"
+    },
+    {
+      "proposedPublicAction": "muchvest-prepare-create",
+      "agentkitMethod": "MuchvestActionProvider_muchvest_prepare_create",
+      "schemaExport": "CreateVestingSchema",
+      "behavior": "prepare",
+      "signs": false,
+      "requiredRuntimePolicy": "Read/prepare only; no spend"
+    },
+    {
+      "proposedPublicAction": "muchvest-prepare-claim",
+      "agentkitMethod": "MuchvestActionProvider_muchvest_prepare_claim",
+      "schemaExport": "GetPlanSchema",
+      "behavior": "prepare",
+      "signs": false,
+      "requiredRuntimePolicy": "Read/prepare only; no spend"
+    },
+    {
+      "proposedPublicAction": "muchvest-approve-funding",
+      "agentkitMethod": "MuchvestActionProvider_muchvest_approve_funding",
+      "schemaExport": "ConfirmCreateSchema",
+      "behavior": "write",
+      "signs": true,
+      "requiredRuntimePolicy": "Inject durable MuchvestExecutionPolicy: atomic user/amount/recipient authorization, global account+nonce lease, total DOGE budgets, permanent request IDs, submitted hash persistence and canonical actual-fee reconciliation"
+    },
+    {
+      "proposedPublicAction": "muchvest-create-vesting",
+      "agentkitMethod": "MuchvestActionProvider_muchvest_create_vesting",
+      "schemaExport": "ConfirmCreateSchema",
+      "behavior": "write",
+      "signs": true,
+      "requiredRuntimePolicy": "Inject durable MuchvestExecutionPolicy: atomic user/amount/recipient authorization, global account+nonce lease, total DOGE budgets, permanent request IDs, submitted hash persistence and canonical actual-fee reconciliation"
+    },
+    {
+      "proposedPublicAction": "muchvest-claim-vesting",
+      "agentkitMethod": "MuchvestActionProvider_muchvest_claim_vesting",
+      "schemaExport": "ConfirmClaimSchema",
+      "behavior": "write",
+      "signs": true,
+      "requiredRuntimePolicy": "Inject durable MuchvestExecutionPolicy: atomic user/amount/recipient authorization, global account+nonce lease, total DOGE budgets, permanent request IDs, submitted hash persistence and canonical actual-fee reconciliation"
+    }
+  ],
+  "integrationRequired": [
+    "Instantiate muchvestActionProvider in the Thirdfy runtime",
+    "Map decorated action methods and exported Zod schemas in private API manifest",
+    "Apply host authorization, policy, pricing and idempotency",
+    "Wire unsigned prepare outputs to buildTx/self if desired",
+    "Validate fresh live catalog then smoke-test authorized own agent"
+  ],
+  "sources": [
+    "https://github.com/thirdfy/agentkit",
+    "https://docs.thirdfy.com/documentation/mcp/execution",
+    "https://api.thirdfy.com/api/v1/agent/actions/catalog"
+  ],
+  "executionPolicyRequired": true,
+  "writeRequestId": "Host-issued stable id; permanent idempotency plus global account/nonce reservation",
+  "feePolicy": {
+    "maximumExecutionWei": "5000000000000000",
+    "maximumTotalReservedWei": "50000000000000000",
+    "l1Oracle": "0x5300000000000000000000000000000000000002",
+    "uncertainty": "No automatic resend; host must reconcile durable intent/nonce/hash and actual L1 fees"
+  }
+}
