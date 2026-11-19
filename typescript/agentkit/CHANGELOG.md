@@ -1,5 +1,11 @@
 # AgentKit Changelog
 
+## 0.10.20
+
+### Patch Changes
+
+- Added the EEZ-X Testnet (`699169`, `eez-x-testnet`), the Ethereum Economic Zone test rollup on Gnosis Chiado, to `CHAIN_ID_TO_NETWORK_ID`, `NETWORK_ID_TO_VIEM_CHAIN`, and `getChain`, so Privy EVM wallet configure works on it.
+
 ## 0.10.19
 
 ### Patch Changes

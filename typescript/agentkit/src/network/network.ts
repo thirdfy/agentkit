@@ -33,6 +33,7 @@ export const CHAIN_ID_TO_NETWORK_ID: Record<number, string> = {
   5042: "arc-mainnet",
   5042002: "arc-testnet",
   4326: "megaeth-mainnet",
+  699169: "eez-x-testnet",
 };
 
 const dogeosTestnet = defineChain({
@@ -156,6 +157,35 @@ const megaethMainnet = defineChain({
 });
 
 /**
+ * EEZ-X Testnet: the Ethereum Economic Zone test rollup, settling to Gnosis Chiado. Gas is test xDAI.
+ * Not in viem; read on 2026-11-19 (`eth_chainId` 0xaab21, eez.dev/dashboard/config.json).
+ */
+const eezXTestnet = defineChain({
+  id: 699169,
+  name: "EEZ-X Testnet",
+  nativeCurrency: {
+    name: "xDAI",
+    symbol: "xDAI",
+    decimals: 18,
+  },
+  rpcUrls: {
+    default: {
+      http: ["https://eez.dev/rpc/l2"],
+    },
+    public: {
+      http: ["https://eez.dev/rpc/l2"],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: "Blockscout",
+      url: "https://eez.dev/explorer",
+    },
+  },
+  testnet: true,
+});
+
+/**
  * Maps Coinbase network IDs to EVM chain IDs
  */
 export const NETWORK_ID_TO_CHAIN_ID: Record<string, string> = Object.entries(
@@ -187,6 +217,7 @@ export const NETWORK_ID_TO_VIEM_CHAIN: Record<string, Chain> = {
   "arc-mainnet": arcMainnet,
   "arc-testnet": arcTestnet,
   "megaeth-mainnet": megaethMainnet,
+  "eez-x-testnet": eezXTestnet,
 };
 
 /**
