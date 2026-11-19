@@ -1,5 +1,11 @@
 # AgentKit Changelog
 
+## 0.10.19
+
+### Patch Changes
+
+- Added MegaETH mainnet (`4326`, `megaeth-mainnet`) to `CHAIN_ID_TO_NETWORK_ID`, `NETWORK_ID_TO_VIEM_CHAIN`, and `getChain`. Privy EVM wallet configure no longer throws `Chain with ID 4326 not found`.
+
 ## 0.10.18
 
 ### Patch Changes

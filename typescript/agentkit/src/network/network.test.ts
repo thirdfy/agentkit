@@ -37,4 +37,18 @@ describe("network chain registry", () => {
     expect(chain.name).toBe("Arc Testnet");
     expect(chain.nativeCurrency.symbol).toBe("USDC");
   });
+
+  it("maps MegaETH mainnet chain id 4326", () => {
+    expect(CHAIN_ID_TO_NETWORK_ID[4326]).toBe("megaeth-mainnet");
+    expect(NETWORK_ID_TO_VIEM_CHAIN["megaeth-mainnet"].id).toBe(4326);
+  });
+
+  it("resolves MegaETH mainnet via getChain fallback", () => {
+    const chain = getChain("4326");
+    expect(chain.id).toBe(4326);
+    expect(chain.name).toBe("MegaETH");
+    expect(chain.nativeCurrency.symbol).toBe("ETH");
+    expect(chain.nativeCurrency.decimals).toBe(18);
+    expect(chain.rpcUrls.default.http[0]).toBe("https://mainnet.megaeth.com/rpc");
+  });
 });

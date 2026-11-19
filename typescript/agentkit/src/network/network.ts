@@ -32,6 +32,7 @@ export const CHAIN_ID_TO_NETWORK_ID: Record<number, string> = {
   4663: "robinhood-mainnet",
   5042: "arc-mainnet",
   5042002: "arc-testnet",
+  4326: "megaeth-mainnet",
 };
 
 const dogeosTestnet = defineChain({
@@ -130,6 +131,30 @@ const arcTestnet = defineChain({
   },
 });
 
+const megaethMainnet = defineChain({
+  id: 4326,
+  name: "MegaETH",
+  nativeCurrency: {
+    name: "Ether",
+    symbol: "ETH",
+    decimals: 18,
+  },
+  rpcUrls: {
+    default: {
+      http: ["https://mainnet.megaeth.com/rpc"],
+    },
+    public: {
+      http: ["https://mainnet.megaeth.com/rpc"],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: "Blockscout",
+      url: "https://megaeth.blockscout.com",
+    },
+  },
+});
+
 /**
  * Maps Coinbase network IDs to EVM chain IDs
  */
@@ -161,6 +186,7 @@ export const NETWORK_ID_TO_VIEM_CHAIN: Record<string, Chain> = {
   "robinhood-mainnet": robinhoodMainnet,
   "arc-mainnet": arcMainnet,
   "arc-testnet": arcTestnet,
+  "megaeth-mainnet": megaethMainnet,
 };
 
 /**
