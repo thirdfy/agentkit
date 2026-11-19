@@ -51,4 +51,18 @@ describe("network chain registry", () => {
     expect(chain.nativeCurrency.decimals).toBe(18);
     expect(chain.rpcUrls.default.http[0]).toBe("https://mainnet.megaeth.com/rpc");
   });
+
+  it("maps EEZ-X testnet chain id 699169", () => {
+    expect(CHAIN_ID_TO_NETWORK_ID[699169]).toBe("eez-x-testnet");
+    expect(NETWORK_ID_TO_VIEM_CHAIN["eez-x-testnet"].id).toBe(699169);
+  });
+
+  it("resolves EEZ-X testnet via getChain fallback", () => {
+    const chain = getChain("699169");
+    expect(chain.id).toBe(699169);
+    expect(chain.name).toBe("EEZ-X Testnet");
+    expect(chain.nativeCurrency.symbol).toBe("xDAI");
+    expect(chain.testnet).toBe(true);
+    expect(chain.rpcUrls.default.http[0]).toBe("https://eez.dev/rpc/l2");
+  });
 });
